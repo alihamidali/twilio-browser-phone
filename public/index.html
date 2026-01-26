@@ -7,7 +7,7 @@
   <script src="https://unpkg.com/@twilio/voice-sdk@2.10.2/dist/twilio.min.js"></script>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       max-width: 400px;
       margin: 50px auto;
       padding: 20px;
@@ -23,47 +23,93 @@
     .status.busy { background: #fff3cd; }
     .status.error { background: #f8d7da; }
     button {
-      padding: 15px 30px;
-      margin: 10px;
+      padding: 12px 24px;
+      margin: 5px;
       font-size: 16px;
       cursor: pointer;
       border: none;
-      border-radius: 5px;
+      border-radius: 4px;
     }
-    .call-btn { background: #28a745; color: white; }
-    .hangup-btn { background: #dc3545; color: white; }
-    .receive-btn { background: #007bff; color: white; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    #log { text-align: left; font-size: 12px; margin-top: 20px; }
+    #callBtn { background: #28a745; color: white; }
+    #callBtn:disabled { background: #ccc; }
+    #hangupBtn { background: #dc3545; color: white; }
+    #hangupBtn:disabled { background: #ccc; }
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    .input-group input {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    #log {
+      margin-top: 20px;
+      text-align: left;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
-  <h1>🎙️ Browser Phone</h1>
-  <div id="status" class="status">Initializing...</div>
+  <h1>📞 Browser Phone</h1>
+  
+  <div class="input-group">
+    <label for="phoneNumber">Phone Number (with extension)</label>
+    <input type="tel" id="phoneNumber" placeholder="+1234567890,1234" />
+  </div>
   
   <div>
-    <button id="callBtn" class="call-btn" disabled>📞 Test Call</button>
-    <button id="hangupBtn" class="hangup-btn" disabled>📴 Hang Up</button>
+    <button id="callBtn" disabled>📞 Test Call</button>
+    <button id="hangupBtn" disabled>📴 Hang Up</button>
   </div>
   
-  <div style="margin-top: 20px;">
-    <button id="receiveBtn" class="receive-btn">📲 Trigger Incoming Call</button>
-  </div>
-  
-  <div id="log"></div>
+  <div id="status">Initializing...</div>
+
+  <div id="log" style="margin-top: 20px; text-align: left; font-size: 12px; max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 10px; border-radius: 4px;"></div>
 
   <script>
+    const STORAGE_KEY = 'twilio_phone_number';
     const statusEl = document.getElementById('status');
     const callBtn = document.getElementById('callBtn');
     const hangupBtn = document.getElementById('hangupBtn');
-    const receiveBtn = document.getElementById('receiveBtn');
+    const phoneInput = document.getElementById('phoneNumber');
     const logEl = document.getElementById('log');
-    
     let device;
     let activeCall;
 
+    // Load saved phone number from localStorage
+    const savedNumber = localStorage.getItem(STORAGE_KEY);
+    if (savedNumber) {
+      phoneInput.value = savedNumber;
+    }
+
+    // Save phone number to localStorage on change
+    phoneInput.addEventListener('input', () => {
+      localStorage.setItem(STORAGE_KEY, phoneInput.value);
+    });
+
     function log(msg) {
-      logEl.innerHTML += `<p>${new Date().toLocaleTimeString()}: ${msg}</p>`;
+      console.log(msg);
+      logEl.innerHTML += `<p style="margin:2px 0">${new Date().toLocaleTimeString()}: ${msg}</p>`;
+      logEl.scrollTop = logEl.scrollHeight;
     }
 
     function setStatus(text, type = '') {
@@ -119,47 +165,41 @@
         await device.register();
 
       } catch (err) {
-        setStatus('Failed to initialize', 'error');
+        setStatus('Failed to initialize: ' + err.message, 'error');
         log('Init error: ' + err.message);
+        console.error(err);
       }
     }
 
     callBtn.addEventListener('click', async () => {
-      if (device) {
-        try {
-          activeCall = await device.connect();
-          callBtn.disabled = true;
-          hangupBtn.disabled = false;
-          setStatus('Connected', 'busy');
-          log('Call connected');
-          
-          activeCall.on('disconnect', () => {
-            setStatus('Call ended', 'ready');
-            log('Call disconnected');
-            activeCall = null;
-            hangupBtn.disabled = true;
-            callBtn.disabled = false;
-          });
-        } catch (err) {
-          log('Call error: ' + err.message);
-        }
+      const phoneNumber = phoneInput.value.trim();
+      if (!phoneNumber) {
+        setStatus('⚠️ Please enter a phone number', 'error');
+        return;
+      }
+      setStatus('📞 Calling...', 'busy');
+      try {
+        activeCall = await device.connect({ To: phoneNumber });
+        callBtn.disabled = true;
+        hangupBtn.disabled = false;
+        log('Call connected');
+        
+        activeCall.on('disconnect', () => {
+          setStatus('Call ended', 'ready');
+          log('Call disconnected');
+          activeCall = null;
+          hangupBtn.disabled = true;
+          callBtn.disabled = false;
+        });
+      } catch (err) {
+        log('Call error: ' + err.message);
+        setStatus('Error: ' + err.message, 'error');
       }
     });
 
     hangupBtn.addEventListener('click', () => {
       if (activeCall) {
         activeCall.disconnect();
-      }
-    });
-
-    receiveBtn.addEventListener('click', async () => {
-      log('Requesting incoming call...');
-      const res = await fetch('/call-browser', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        log('Call initiated: ' + data.callSid);
-      } else {
-        log('Error: ' + data.error);
       }
     });
 
