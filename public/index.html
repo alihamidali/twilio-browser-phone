@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twilio WebRTC Phone</title>
+  <script src="https://unpkg.com/@twilio/voice-sdk@2.10.2/dist/twilio.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      max-width: 400px;
+      margin: 50px auto;
+      padding: 20px;
+      text-align: center;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      background: #f0f0f0;
+    }
+    .status.ready { background: #d4edda; }
+    .status.busy { background: #fff3cd; }
+    .status.error { background: #f8d7da; }
+    button {
+      padding: 15px 30px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+    }
+    .call-btn { background: #28a745; color: white; }
+    .hangup-btn { background: #dc3545; color: white; }
+    .receive-btn { background: #007bff; color: white; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #log { text-align: left; font-size: 12px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>🎙️ Browser Phone</h1>
+  <div id="status" class="status">Initializing...</div>
+  
+  <div>
+    <button id="callBtn" class="call-btn" disabled>📞 Test Call</button>
+    <button id="hangupBtn" class="hangup-btn" disabled>📴 Hang Up</button>
+  </div>
+  
+  <div style="margin-top: 20px;">
+    <button id="receiveBtn" class="receive-btn">📲 Trigger Incoming Call</button>
+  </div>
+  
+  <div id="log"></div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const callBtn = document.getElementById('callBtn');
+    const hangupBtn = document.getElementById('hangupBtn');
+    const receiveBtn = document.getElementById('receiveBtn');
+    const logEl = document.getElementById('log');
+    
+    let device;
+    let activeCall;
+
+    function log(msg) {
+      logEl.innerHTML += `<p>${new Date().toLocaleTimeString()}: ${msg}</p>`;
+    }
+
+    function setStatus(text, type = '') {
+      statusEl.textContent = text;
+      statusEl.className = 'status ' + type;
+    }
+
+    async function init() {
+      // Wait for Twilio SDK to be available
+      if (typeof Twilio === 'undefined') {
+        setStatus('Loading SDK...', '');
+        setTimeout(init, 100);
+        return;
+      }
+
+      try {
+        const res = await fetch('/token');
+        const { token, identity } = await res.json();
+        
+        device = new Twilio.Device(token, {
+          codecPreferences: ['opus', 'pcmu']
+        });
+
+        device.on('registered', () => {
+          setStatus(`Ready as "${identity}"`, 'ready');
+          callBtn.disabled = false;
+          log('Device registered');
+        });
+
+        device.on('error', (twilioError) => {
+          setStatus('Error: ' + twilioError.message, 'error');
+          log('Error: ' + twilioError.message);
+        });
+
+        device.on('incoming', (call) => {
+          setStatus('Incoming call...', 'busy');
+          log('Incoming call');
+          call.accept();
+          activeCall = call;
+          hangupBtn.disabled = false;
+          callBtn.disabled = true;
+          
+          call.on('disconnect', () => {
+            setStatus('Call ended', 'ready');
+            log('Call disconnected');
+            activeCall = null;
+            hangupBtn.disabled = true;
+            callBtn.disabled = false;
+          });
+        });
+
+        log('Registering device...');
+        await device.register();
+
+      } catch (err) {
+        setStatus('Failed to initialize', 'error');
+        log('Init error: ' + err.message);
+      }
+    }
+
+    callBtn.addEventListener('click', async () => {
+      if (device) {
+        try {
+          activeCall = await device.connect();
+          callBtn.disabled = true;
+          hangupBtn.disabled = false;
+          setStatus('Connected', 'busy');
+          log('Call connected');
+          
+          activeCall.on('disconnect', () => {
+            setStatus('Call ended', 'ready');
+            log('Call disconnected');
+            activeCall = null;
+            hangupBtn.disabled = true;
+            callBtn.disabled = false;
+          });
+        } catch (err) {
+          log('Call error: ' + err.message);
+        }
+      }
+    });
+
+    hangupBtn.addEventListener('click', () => {
+      if (activeCall) {
+        activeCall.disconnect();
+      }
+    });
+
+    receiveBtn.addEventListener('click', async () => {
+      log('Requesting incoming call...');
+      const res = await fetch('/call-browser', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        log('Call initiated: ' + data.callSid);
+      } else {
+        log('Error: ' + data.error);
+      }
+    });
+
+    // Start initialization when page loads
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
