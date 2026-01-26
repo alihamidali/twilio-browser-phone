@@ -2,6 +2,9 @@
 
 A browser-based phone application using Twilio's Voice SDK for WebRTC calling.
 
+<img width="1917" height="1058" alt="image" src="https://github.com/user-attachments/assets/4b15e084-9f26-46d7-8e48-20e435b59ea2" />
+
+
 ## Prerequisites
 
 - Node.js (v14 or higher)
